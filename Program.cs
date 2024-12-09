@@ -36,14 +36,11 @@ app.MapGet("/BoardGames", async (BoardGameDb db) =>
 
 app.MapGet("/BoardGame/{slug}", async (string slug, BoardGameDb db) =>
 {
-    var bg = await db.BoardGames.FirstOrDefaultAsync(bg => Slugifier.GenerateSlug(bg.Slug) == slug);
-    var boardGame = new BoardGame()
+    if(await db.BoardGames.FirstOrDefaultAsync(bg => Slugifier.GenerateSlug(bg.Slug) == slug) is BoardGame boardGame)
     {
-        Name = bg.Name,
-        Description = bg.Description,
-        Slug = bg.Slug
-    };
-    return Results.Ok(boardGame); 
+        return Results.Ok(boardGame);   
+    }
+    return Results.NotFound();
 });
 
 
@@ -79,7 +76,7 @@ app.MapPut("/BoardGame/{slug}", async (string slug, UpdateBoardGameRequest input
 
 app.MapDelete("/BoardGame/{slug}", async (string slug, BoardGameDb db) =>
 {
-    if (await db.BoardGames.FindAsync(slug) is BoardGame BoardGame)
+    if (await db.BoardGames.FirstOrDefaultAsync(x => x.Slug == slug) is BoardGame BoardGame)
     {
         db.BoardGames.Remove(BoardGame);
         await db.SaveChangesAsync();
