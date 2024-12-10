@@ -34,7 +34,7 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "watch" : {
+    "dev" : {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,

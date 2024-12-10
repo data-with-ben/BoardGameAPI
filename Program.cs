@@ -1,11 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using BoardGameAPI.DTOs.Requests;
 using BoardGameAPI.Configuration;
-using System.IO.Compression;
+using BoardGameAPI.Models;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
+
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddDbContext<BoardGameDb>(opt => opt.UseInMemoryDatabase("BoardGameAPI"));
-
+builder.Services.AddDbContext<GameKnightDb>(opt => opt.UseInMemoryDatabase("GameKnightDb"));
 builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddOpenApiDocument(config =>
@@ -31,10 +33,10 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.MapGet("/BoardGames", async (BoardGameDb db) =>
+app.MapGet("/BoardGames", async ([FromServices] GameKnightDb db) =>
     await db.BoardGames.ToListAsync());
 
-app.MapGet("/BoardGame/{slug}", async (string slug, BoardGameDb db) =>
+app.MapGet("/BoardGame/{slug}", async (string slug, [FromServices] GameKnightDb db) =>
 {
     if(await db.BoardGames.FirstOrDefaultAsync(bg => Slugifier.GenerateSlug(bg.Slug) == slug) is BoardGame boardGame)
     {
@@ -43,8 +45,17 @@ app.MapGet("/BoardGame/{slug}", async (string slug, BoardGameDb db) =>
     return Results.NotFound();
 });
 
+app.MapGet("/User/{Email}", async (string email, [FromServices] GameKnightDb db) =>
+{
+    if(await db.Users.Include(u => u.BoardGames).FirstOrDefaultAsync(bg => bg.Email == email) is User user)
+    {
+        return Results.Ok(user);
+    }
+    return Results.NotFound();
+});
 
-app.MapPost("/BoardGame", async (CreateBoardGameRequest request, BoardGameDb db) =>
+
+app.MapPost("/BoardGame", async ([FromBody] CreateBoardGameRequest request, [FromServices] GameKnightDb db) =>
 {
     var boardGame = new BoardGame 
     { 
@@ -59,7 +70,43 @@ app.MapPost("/BoardGame", async (CreateBoardGameRequest request, BoardGameDb db)
     return Results.Created($"/BoardGame/{boardGame.Id}", boardGame);
 });
 
-app.MapPut("/BoardGame/{slug}", async (string slug, UpdateBoardGameRequest inputBoardGame, BoardGameDb db) =>
+app.MapPost("/User", async ([FromBody] CreateUserRequest request, [FromServices] GameKnightDb db) => 
+{
+    var user = new User
+    {
+        Handle = request.Handle,
+        Email = request.Email,
+        FirstName = request.FirstName,
+        LastName = request.LastName
+    };
+    db.Users.Add(user);
+    await db.SaveChangesAsync();
+
+    return Results.Created($"/User/{user.Email}", user);
+});
+
+app.MapPost("/User/AddBoardGame", async ([FromBody] CreateUserBoardGameRequest request, [FromServices] GameKnightDb GameKnightDb) =>
+{
+    var user = await GameKnightDb.Users
+        .Include(u => u.BoardGames)
+        .FirstOrDefaultAsync(u => u.Email == request.Email);
+    
+    if (user == null)
+        return Results.NotFound("User not found!");
+
+    var boardGame = await GameKnightDb.BoardGames
+        .FirstOrDefaultAsync(b => b.Slug == request.BoardGame.Slug);
+    
+    if (boardGame == null)
+        return Results.NotFound("Board game not found!");
+
+    user.BoardGames.Add(boardGame);
+    await GameKnightDb.SaveChangesAsync();
+
+    return Results.Ok(user);
+});
+
+app.MapPut("/BoardGame/{slug}", async (string slug, [FromBody] UpdateBoardGameRequest inputBoardGame, [FromServices] GameKnightDb db) =>
 {
     var BoardGame = await db.BoardGames.FirstOrDefaultAsync(b => b.Slug == slug);
 
@@ -74,7 +121,7 @@ app.MapPut("/BoardGame/{slug}", async (string slug, UpdateBoardGameRequest input
     return Results.NoContent();
 });
 
-app.MapDelete("/BoardGame/{slug}", async (string slug, BoardGameDb db) =>
+app.MapDelete("/BoardGame/{slug}", async (string slug, [FromServices] GameKnightDb db) =>
 {
     if (await db.BoardGames.FirstOrDefaultAsync(x => x.Slug == slug) is BoardGame BoardGame)
     {
